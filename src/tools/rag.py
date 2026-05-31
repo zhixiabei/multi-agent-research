@@ -5,9 +5,14 @@ from langchain.tools import tool
 import chromadb
 from chromadb.utils import embedding_functions
 
-# 加载全局配置
-with open("config.yaml", "r", encoding="utf-8") as f:
+# ========== 固定写法：自动找到项目根目录的 config.yaml ==========
+# 当前文件：src/tools/rag.py
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+config_path = os.path.join(BASE_DIR, "config.yaml")
+
+with open(config_path, "r", encoding="utf-8") as f:
     cfg = yaml.safe_load(f)
+# ==========================================================
 
 PERSIST_DIR = cfg["chroma"]["persist_directory"]
 COLLECTION_NAME = cfg["chroma"]["collection_name"]

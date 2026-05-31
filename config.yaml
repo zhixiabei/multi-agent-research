@@ -1,0 +1,5 @@
+chroma:
+  persist_directory: "./chroma_db"
+  collection_name: "knowledge_base"
+  chunk_size: 800
+  chunk_overlap: 100

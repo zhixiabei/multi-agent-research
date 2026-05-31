@@ -6,12 +6,19 @@ import httpx
 
 load_dotenv()
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL")
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 HTTP_TIMEOUT = 15
 
 
 @tool
 async def read_pdf(file_path: str) -> str:
+    """
+    读取本地PDF文档，提取文档内全部文本内容
+    当需要分析PDF格式资料、论文、文档时使用该工具
+
+    Args:
+        file_path: 本地PDF文件的绝对/相对路径
+    """
     try:
         reader = PdfReader(file_path)
         full_text = ""
@@ -76,6 +83,4 @@ async def read_image(image_path: str) -> str:
     except Exception as e:
         return f"图片解析失败：{str(e)}"
 
-
-# 对外暴露工具集合
 FILE_TOOLS = [read_pdf, read_image]
