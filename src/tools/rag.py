@@ -2,7 +2,7 @@ import os
 import uuid
 import yaml
 from langchain.tools import tool
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 import chromadb
 from chromadb.utils import embedding_functions
 
