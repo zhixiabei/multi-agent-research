@@ -1,33 +1,70 @@
+"""联网搜索工具 —— 调用 Tavily Search API"""
+import os
+
+from dotenv import load_dotenv
 from langchain.tools import tool
 import httpx
 
-# 网络请求超时配置
-HTTP_TIMEOUT = 15
+load_dotenv()
+
+# Tavily API 配置
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+TAVILY_SEARCH_URL=os.getenv("TAVILY_SEARCH_URL")
+
+HTTP_TIMEOUT = 20
 
 
 @tool
-async def web_search(query: str) -> str:
+async def web_search(query: str, top_k: int = 5) -> str:
     """
-    联网搜索工具，用于获取外部实时信息、行业资料、最新动态
-    当需要查询陌生知识、时效性内容时使用该工具
+    联网搜索工具，调用 Tavily 搜索引擎获取实时信息。
+    用于查询陌生知识、时效性内容、行业动态等。
 
     Args:
-        query: 搜索关键词/研究主题
+        query: 搜索关键词
+        top_k: 返回结果数量，默认 5 条
     """
-    search_result = f"""
-【搜索主题】{query}
-1. 基础概念：该领域核心定义、发展背景与主流应用场景。
-2. 技术现状：当前主流实现方案、优缺点与行业落地案例。
-3. 发展趋势：未来技术方向、市场观点与相关参考资料。
-    """
-    return search_result.strip()
+    body = {
+        "api_key": TAVILY_API_KEY,
+        "query": query,
+        "search_depth": "basic",
+        "max_results": top_k,
+    }
+
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.post(TAVILY_SEARCH_URL, headers=headers, json=body)
+            response.raise_for_status()
+            data = response.json()
+
+            results = data.get("results", [])
+            if not results:
+                return f"[搜索结果为空] 关键词: {query}"
+
+            parts = [f"【搜索主题】{query}"]
+            for i, item in enumerate(results, 1):
+                title = item.get("title", "无标题")
+                content = item.get("content", "")
+                url = item.get("url", "")
+                parts.append(f"{i}. {title}\n   {content}\n   链接: {url}")
+
+            return "\n\n".join(parts)
+
+    except httpx.HTTPStatusError as e:
+        return f"[搜索失败] HTTP {e.response.status_code}: {e.response.text[:300]}"
+    except httpx.RequestError as e:
+        return f"[搜索失败] 网络请求异常: {e}"
+    except Exception as e:
+        return f"[搜索失败] 未知错误: {e}"
 
 
 @tool
 async def fetch_webpage(url: str) -> str:
     """
-    网页内容抓取工具，用于读取网页完整正文
-    当搜索摘要信息不足，需要精读详情页面时使用该工具
+    网页内容抓取工具，用于读取网页完整正文。
+    当搜索摘要信息不足，需要精读详情页面时使用该工具。
 
     Args:
         url: 待抓取的网页链接
