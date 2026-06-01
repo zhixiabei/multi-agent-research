@@ -45,14 +45,15 @@ async def decompose_node(state: ResearchState) -> dict:
         "subtasks": subtasks,
         "results": [],
         "critiques": [],
+        "failed_task_ids": [],
         "retry_round": 0,
     }
 
 
 async def research_node(state: ResearchState) -> dict:
     """Worker × N 并行研究"""
-    # 确定哪些子任务需要研究
     failed_ids = set(state.get("failed_task_ids", []) or [])
+
     if failed_ids:
         targets = [t for t in state["subtasks"] if t.id in failed_ids]
         print(f"\n[Worker] 重写 {len(targets)} 个不通过的子任务: {failed_ids}")
@@ -65,17 +66,23 @@ async def research_node(state: ResearchState) -> dict:
         return await research_task(task)
 
     new_results = await asyncio.gather(*[do(t) for t in targets])
-    return {"results": list(new_results)}
+
+    # 替换掉不通过的结果，保留通过的
+    passed = {r.task_id: r for r in state.get("results", []) if r.task_id not in failed_ids}
+    for r in new_results:
+        passed[r.task_id] = r
+
+    return {"results": list(passed.values()), "failed_task_ids": []}
 
 
 async def critique_node(state: ResearchState) -> dict:
-    """Critic 审核所有未审核的结果"""
-    # 已有 critique 的 task_id
+    """Critic 审核所有未审核的结果，并递增重试轮次"""
     reviewed_ids = {c.task_id for c in (state.get("critiques", []) or [])}
-
     to_review = [r for r in state["results"] if r.task_id not in reviewed_ids]
+
     if not to_review:
-        return {}
+        # 所有结果都已审核，递增重试轮次
+        return {"retry_round": state.get("retry_round", 0) + 1}
 
     print(f"\n[Critic] 审核 {len(to_review)} 份研究报告...")
 
@@ -86,7 +93,19 @@ async def critique_node(state: ResearchState) -> dict:
         return c
 
     new_critiques = await asyncio.gather(*[do(r) for r in to_review])
-    return {"critiques": list(new_critiques)}
+
+    # 保留之前的 critique，合并新的
+    old = [c for c in (state.get("critiques", []) or []) if c.task_id not in {c2.task_id for c2 in new_critiques}]
+    all_critiques = old + list(new_critiques)
+
+    # 计算本轮不通过的
+    failed_ids = [c.task_id for c in all_critiques if not c.passed]
+
+    return {
+        "critiques": all_critiques,
+        "failed_task_ids": failed_ids,
+        "retry_round": state.get("retry_round", 0) + 1,
+    }
 
 
 async def synthesize_node(state: ResearchState) -> dict:
@@ -111,17 +130,15 @@ async def synthesize_node(state: ResearchState) -> dict:
 
 def should_retry(state: ResearchState) -> str:
     """判断是否需要退回重写"""
-    critiques = state.get("critiques", [])
-    if not critiques:
-        return "research"
-
-    failed = [c for c in critiques if not c.passed]
+    failed_ids = state.get("failed_task_ids", [])
     retry_round = state.get("retry_round", 0)
 
-    if failed and retry_round < MAX_RETRIES:
-        failed_ids = [c.task_id for c in failed]
-        print(f"\n[Router] {len(failed)} 个不通过，第 {retry_round + 1}/{MAX_RETRIES} 轮重试 → {failed_ids}")
+    if failed_ids and retry_round <= MAX_RETRIES:
+        print(f"\n[Router] {len(failed_ids)} 个不通过，第 {retry_round}/{MAX_RETRIES} 轮重试 → {failed_ids}")
         return "research"
+
+    if failed_ids:
+        print(f"\n[Router] 超过最大重试次数({MAX_RETRIES})，强制进入合成")
 
     return "synthesize"
 
