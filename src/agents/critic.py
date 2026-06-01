@@ -82,7 +82,11 @@ async def critique_result(result: ResearchResult) -> CritiqueResult:
 
 - passed: true=通过, false=不通过
 - issues: 发现的具体问题（空列表表示无问题）
+  -**passed=true时**，返回一些轻微的问题或者瑕疵，比如有遗漏或者个别句子不通顺，无问题则返回空列表
+  -**passed=false时**，返回你认为导致不通过的问题，让worker重写
 - suggestions: 具体的改进建议，供 Worker 修改时参考（空列表表示无需修改）
+  -**passed=true时，为空列表，'[]'**(报告合格)
+  -**passed=false时**，返回具体的，可以操作的列表，让worker重写
 """
 
     response = await llm.ainvoke(prompt)
@@ -107,7 +111,7 @@ async def critique_result(result: ResearchResult) -> CritiqueResult:
             suggestions=data.get("suggestions", [])
         )
     except (json.JSONDecodeError, KeyError, TypeError) as e:
-        # fail safe：审不出来就不能放行，退回 Worker 重写
+        # fail safe：退回 Worker 重写
         print(f"[Critic 错误] JSON 解析失败，退回重审。原始输出:\n{raw[:500]}")
         return CritiqueResult(
             task_id=result.task_id,
@@ -122,8 +126,8 @@ if __name__ == "__main__":
     import asyncio
 
     async def main():
-        # 模拟一个 Worker 产出的结果来测试审查
-        good_result = ResearchResult(
+        # 模拟 Worker 产出的研究结果
+        result = ResearchResult(
             task_id=1,
             question="Python 的 GIL 是什么？它如何影响多线程性能？",
             content="""
@@ -147,11 +151,11 @@ PEP 703 的实验性无 GIL 模式。
         )
 
         print("=" * 60)
-        print(f"审核问题: {good_result.question}")
-        print(f"报告长度: {len(good_result.content)} 字符")
+        print(f"审核问题: {result.question}")
+        print(f"报告长度: {len(result.content)} 字符")
         print("=" * 60)
 
-        verdict = await critique_result(good_result)
+        verdict = await critique_result(result)
         print(f"\n审核结果: {'✅ 通过' if verdict.passed else '❌ 不通过'}")
         print(f"\n发现的问题 ({len(verdict.issues)}):")
         for i, issue in enumerate(verdict.issues, 1):

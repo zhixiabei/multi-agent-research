@@ -24,3 +24,19 @@ class CritiqueResult(BaseModel):
     passed: bool             # 是否通过
     issues: list[str]        # 发现的问题
     suggestions: list[str]   # 改进建议
+
+
+class ReportSection(BaseModel):
+    """最终报告中的一个章节"""
+    heading: str             # 章节标题
+    content: str             # 章节正文
+    sources: list[str]       # 本章引用的来源
+
+
+class FinalReport(BaseModel):
+    """Synthesizer 最终产出的完整报告"""
+    topic: str               # 原始研究主题
+    summary: str             # 执行摘要（200字以内）
+    sections: list[ReportSection]  # 分章节
+    conclusion: str          # 总结
+    unresolved: list[str]    # 不同来源之间的矛盾 / 未解决的问题
