@@ -2,6 +2,7 @@ import os
 import uuid
 import yaml
 from langchain.tools import tool
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 import chromadb
 from chromadb.utils import embedding_functions
 
@@ -27,20 +28,20 @@ collection = client.get_or_create_collection(
     embedding_function=embedding_func
 )
 
+# 语义分块器：按段落 → 句子 → 词语 的优先级切割，保持语义完整
+_text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=CHUNK_SIZE,
+    chunk_overlap=CHUNK_OVERLAP,
+    separators=["\n\n", "\n", "。", ".", "；", ";", " ", ""],
+    keep_separator=True,
+)
+
 
 def split_long_text(text: str) -> list[str]:
-    """长文本分片，滑动窗口保证上下文连贯"""
+    """语义分块：按段落/句子边界切割，保证每块语义完整"""
     if not text or len(text.strip()) == 0:
         return []
-    chunks = []
-    start = 0
-    text_len = len(text)
-    while start < text_len:
-        end = start + CHUNK_SIZE
-        chunk = text[start:end]
-        chunks.append(chunk)
-        start = end - CHUNK_OVERLAP
-    return chunks
+    return _text_splitter.split_text(text)
 
 
 @tool
