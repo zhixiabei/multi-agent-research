@@ -10,11 +10,9 @@ from pydantic import BaseModel
 from src.graph.workflow import run_research
 from src.tools.reader import read_pdf, read_image
 from src.tools.rag import add_knowledge
+from src.db import memory
 
 router = APIRouter()
-
-# 内存存储（临时，后续接数据库）
-_reports: dict[str, dict] = {}
 
 
 # ── 请求/响应模型 ──
@@ -48,20 +46,31 @@ async def research(req: ResearchRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"研究流程异常: {str(e)}")
 
-    report_id = str(uuid.uuid4())[:8]
+    sections_data = [s.model_dump() for s in report.sections]
 
-    response = ResearchResponse(
+    # 持久化存储
+    report_id = memory.save_report(
+        topic=report.topic,
+        summary=report.summary,
+        sections=sections_data,
+        conclusion=report.conclusion,
+        unresolved=report.unresolved,
+    )
+
+    # 记录对话（研究主题作为 user 消息，摘要作为 assistant 消息）
+    session_id = memory.create_session(title=req.topic[:50])
+    memory.save_message(session_id, "user", req.topic)
+    memory.save_message(session_id, "assistant", report.summary)
+
+    return ResearchResponse(
         report_id=report_id,
         topic=report.topic,
         summary=report.summary,
-        sections=[s.model_dump() for s in report.sections],
+        sections=sections_data,
         conclusion=report.conclusion,
         unresolved=report.unresolved,
         created_at=datetime.now().isoformat(),
     )
-
-    _reports[report_id] = response.model_dump()
-    return response
 
 
 # ── 文件上传接口 ──
@@ -102,7 +111,7 @@ async def upload_file(file: UploadFile = File(...)):
 @router.get("/report/{report_id}")
 async def get_report(report_id: str):
     """按 ID 查询历史报告"""
-    report = _reports.get(report_id)
+    report = memory.get_report(report_id)
     if not report:
         raise HTTPException(status_code=404, detail="报告不存在")
     return report
@@ -111,4 +120,14 @@ async def get_report(report_id: str):
 @router.get("/reports")
 async def list_reports():
     """列出所有报告"""
-    return list(_reports.values())
+    return memory.list_reports()
+
+
+@router.get("/sessions/{session_id}/history")
+async def get_session_history(session_id: str):
+    """获取会话对话历史"""
+    return {
+        "session": {"id": session_id},
+        "messages": memory.get_history(session_id),
+        "reports": memory.get_reports_by_session(session_id),
+    }
